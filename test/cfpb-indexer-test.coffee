@@ -16,14 +16,14 @@ describe 'cfpb-indexer', ->
   afterEach ->
     @room.destroy()
 
-  it 'shows no index before indexing has occurred', ->
+  xit 'shows no index before indexing has occurred', ->
     @room.user.say('alice', '@hubot show indexing').then =>
       expect(@room.messages).to.eql [
         ['alice', '@hubot show indexing']
         ['hubot', '@alice Here you go: \"nothing indexed!\"']
       ]
 
-  it 'starts indexing', ->
+  xit 'starts indexing', ->
     @room.user.say('alice', '@hubot start indexing').then =>
       expect(@room.messages).to.eql [
         ['alice', '@hubot start indexing']
