@@ -1,63 +1,144 @@
+'use strict';
 
-
-var google = require( 'googleapis' );
-var googleAuth = require( 'google-auth-library' );;
-var authConfig = require( __dirname + '/sheets-config.json' );
-var scopes = ['https://www.googleapis.com/auth/spreadsheets',
+const google = require( 'googleapis' );
+const googleAuth = require( 'google-auth-library' );;
+const scopes = ['https://www.googleapis.com/auth/spreadsheets',
               'https://www.googleapis.com/auth/drive'];
-var sheets = google.sheets( 'v4' );
-var drive = google.drive( 'v3' );
+const sheetsAPI = google.sheets( 'v4' );
+const drive = google.drive( 'v3' );
 
+const authEmail = process.env.HUBOT_CFPB_INDEXER_GOOGLE_CLIENT_EMAIL;
+const authKey = process.env.HUBOT_CFPB_INDEXER_GOOGLE_PRIVATE_KEY;
 
-function createSpreadSheet( authClient, tokens ) {
-  var request = {
-    resource: {},
+/**
+ * Build the header row for the spreadsheet.
+ * @param {string} url The URL of the page being indexed.
+ * @param {string} responseBuffer The HTML buffer contatining page HTML.
+ */
+function buildSheetHeader( columns ) {
+  const cells = columns.map( value => {
+    return {
+      userEnteredValue: {
+        stringValue: value
+      },
+      userEnteredFormat: {
+        textFormat: {
+          bold: true
+        }
+      }
+    }
+  } );
+  return [ { values: cells } ];
+}
+
+function buildSheetBody( data ) {
+  return data.map( row => {
+    let cells = row.map( column => {
+
+      return {
+        userEnteredValue: {
+          stringValue: column
+        }
+      };
+    } );
+    return { values: cells }
+  } );
+}
+
+function createSheets( sheets ) {
+  return sheets.map( sheet => {
+    const header = buildSheetHeader( sheet.columns );
+    const body = buildSheetBody( sheet.getData() );
+
+    return {
+      properties: {
+        title: sheet.title
+      },
+      data: [ {
+        rowData: header.concat( body ),
+        columnMetadata: sheet.columnSize.map( size => ( { 'pixelSize': size } ) )
+      } ]
+    };
+  } );
+}
+
+async function createSpreadsheet( authClient, sheets ) {
+  let promiseResolve;
+  let promiseReject;
+  const sheetsPromise = new Promise( ( resolve, reject ) => {
+    promiseResolve = resolve;
+    promiseReject = reject;
+  } );
+  const request = {
     auth: authClient,
+    resource: {
+      properties: {
+        title: new Date(),
+      },
+      sheets: createSheets( sheets )
+    }
   };
 
-  sheets.spreadsheets.create( request, ( err, response ) => {
-    var permission = {
-      'type':  'anyone',
-      'role':  'reader'
-    };
+  sheetsAPI.spreadsheets.create( request, ( err, response ) => {
+    if ( err ) {
+      promiseReject( err );
+    }
 
-    drive.permissions.create( {
-      auth: authClient,
-      resource: permission,
-      fileId: response.spreadsheetId,
-      fields: 'id',
-    }, function (err, res) {
-      if ( err ) {
-        // Handle error...
-        console.error( err );
-      } else {
-        console.log( 'Permission ID: ', res.id )
-      }
-    } );
+    const spreadsheetId = response.spreadsheetId;
+    const sheetId = response.sheets[0].properties.sheetId;
+    grantPermissions( authClient, spreadsheetId );
+    promiseResolve( response.spreadsheetUrl );
+  } );
 
+  return sheetsPromise;
+}
+
+async function grantPermissions( authClient, spreadsheetId ) {
+  var permission = {
+    'type':  'anyone',
+    'role':  'writer'
+  };
+
+  await drive.permissions.create( {
+    auth: authClient,
+    resource: permission,
+    fileId: spreadsheetId,
+    fields: 'id',
+  }, ( err, res ) => {
     if ( err ) {
       console.error( err );
+
       return;
     }
   } );
 }
 
-function authorizeAPI( authConfig, callback ) {
+async function authorizeAPI( authConfig ) {
   const jwtClient = new google.auth.JWT(
-    authConfig.client_email,
+    authConfig.authEmail,
     null,
-    authConfig.private_key,
-    scopes
+    authConfig.authKey.replace( /\\n/g, '\n' ),
+    scopes,
+    null
   );
 
-  jwtClient.authorize( function ( err, tokens ) {
+   await jwtClient.authorize( ( err, tokens ) => {
     if ( err ) {
-      console.log( err );
-      return;
+      console.log( err, 'error');
+      return false;
     }
-
-    callback( jwtClient, tokens );
   } );
+
+  return jwtClient;
 }
 
-authorizeAPI( authConfig, createSpreadSheet );
+async function create( sheets ) {
+  const authClient = await authorizeAPI(
+    { authEmail: authEmail, authKey: authKey }
+  );
+  const spreadSheetURL = await createSpreadsheet( authClient, sheets );
+
+  return spreadSheetURL;
+}
+
+module.exports = { create };

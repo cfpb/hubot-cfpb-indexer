@@ -1,18 +1,14 @@
-/*
- * decaffeinate suggestions:
- * DS102: Remove unnecessary code created because of implicit returns
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
- */
 'use strict';
 
 const fs = require( 'fs' );
 const SimpleCrawler = require( 'simplecrawler' );
 const queue = SimpleCrawler.queue;
+const md5 = require( 'md5' );
 
 /**
  * Find atomic components.
- * @param {string} url
- * @param {string} bufferResponse
+ * @param {string} url The URL of the page being indexed.
+ * @param {string} responseBuffer The HTML buffer contatining page HTML.
  */
 function _findAtomicComponents( url, responseBuffer ) {
   const SEARCH = /(?:(?:class=")|\s)((?:o|m|a)-[^_"__\s]*)/g;
@@ -25,10 +21,10 @@ function _findAtomicComponents( url, responseBuffer ) {
   let matchType = undefined;
   const components = [];
   let match = undefined;
-  while ( ( match = SEARCH.exec( pageHMTL ) ) !== null) {
+  while ( ( match = SEARCH.exec( pageHMTL ) ) !== null ) {
     match.forEach( function( match, groupIndex ) {
       matchType = match.substr( 0, 2 );
-      if ( ( prefixLookup.indexOf( matchType ) > -1)
+      if ( ( prefixLookup.indexOf( matchType ) > -1 )
           && ( components.indexOf( match ) === -1 ) ) {
         components.push( match );
       }
@@ -39,15 +35,65 @@ function _findAtomicComponents( url, responseBuffer ) {
 };
 
 /**
+ * Determine if page has WordPress content.
+ * @param {string} url The URL of the page being indexed.
+ * @param {string} responseBuffer The HTML buffer contatining page HTML.
+ * @returns {boolean} True if page has WordPress content, false otherwise.
+ */
+function _hasWordPressContent( url, responseBuffer ) {
+  const SEARCH = /<link rel=[\"']stylesheet[\"'] [^>]+wp-(?:content|includes)/g;
+  const pageHMTL = responseBuffer.toString();
+
+  return SEARCH.test( pageHMTL ) ;
+};
+
+/**
+ * Storing page hash --- can be used to determine if page has changed.
+ * @param {string} url The URL of the page being indexed.
+ * @param {string} responseBuffer The HTML buffer contatining page HTML.
+ * @returns {string} Hash of page contents.
+ */
+function _getPageHash( url, responseBuffer ) {
+  return md5( responseBuffer );
+};
+
+/**
  * Add site index.
  * @param {string} siteCrawler
  */
 function _addSiteIndexEvents( crawler ) {
   crawler.on('fetchcomplete', function( queueItem, responseBuffer ) {
-    let components = [];
-    components = _findAtomicComponents( queueItem, responseBuffer );
-    _addToQueueItem( queueItem, components );
-    console.log( `Fetching: ${queueItem.url}` );
+    const stateData = queueItem.stateData;
+    const contentType = ( stateData && stateData.contentType ) || '';
+    const url = queueItem.url;
+
+    if ( contentType.indexOf( 'text/html' ) > -1
+         && queueItem.host === crawler.host ) {
+      let components = _findAtomicComponents( url, responseBuffer );
+      _addToQueueItem( queueItem, components );
+      queueItem.hasWordPressContent =
+        _hasWordPressContent( url, responseBuffer );
+      queueItem.pageHash = _getPageHash( url, responseBuffer );
+    }
+
+    console.log( `Fetch complete: ${url}` );
+  } );
+
+  crawler.addDownloadCondition( ( queueItem, referrerQueueItem, callback ) => {
+    const downloadRegex =
+    /\.(png|jpg|jpeg|gif|ico|css|js|csv|doc|docx|svg|pdf|xls|json|ttf|xml)$/i;
+
+    callback( null, !queueItem.url.match( downloadRegex ) );
+  } );
+
+  crawler.addFetchCondition( ( queueItem, referrerQueueItem, callback ) => {
+    // We only ever want to move one step away from example.com, so if the
+    // referrer queue item reports a different domain, don't proceed
+    callback(null, referrerQueueItem.host === crawler.host);
+  } );
+
+  crawler.on( 'fetchclienterror', function( queueItem, error ) {
+    console.log( 'fetch client error:' + error );
   } );
 
   crawler.on( 'complete', function() {
@@ -86,7 +132,10 @@ queue.prototype.defrost = function defrost( fileData, callback ) {
   var defrostedQueue = [];
 
   if ( !fileData.toString( 'utf8' ).length ) {
-    return callback( new Error( 'Failed to defrost queue from zero-length JSON.' ) );
+    return callback( new Error(
+      'Failed to defrost queue from zero-length JSON.'
+      )
+    );
   }
 
   try {
@@ -99,20 +148,26 @@ queue.prototype.defrost = function defrost( fileData, callback ) {
   queue._oldestUnfetchedIndex = defrostedQueue.length - 1;
   queue._scanIndex = {};
 
-
   for ( var i = 0; i < defrostedQueue.length; i++ ) {
     var queueItem = defrostedQueue[i];
     queue.push( queueItem );
 
     if ( queueItem.status === 'queued' )  {
-      queue._oldestUnfetchedIndex = Math.min( queue._oldestUnfetchedIndex, i );
+      queue._oldestUnfetchedIndex =
+        Math.min( queue._oldestUnfetchedIndex, i );
     }
 
     queue._scanIndex[queueItem.url] = true;
   }
 
-  console.log( defrostedQueue.length )
   callback( null, queue );
+};
+
+/**
+ * Reset site crawler queue.
+ */
+SimpleCrawler.prototype.resetQueue = function resetQueue( ) {
+  this.queue = new queue();
 };
 
 /**
@@ -123,11 +178,13 @@ function create ( options={} ) {
   const crawler = SimpleCrawler( options.URL );
 
   const crawlerDefaults = {
-    interval: 200,
-    maxConcurrency: 30,
+    interval: 5000,
+    maxConcurrency: 5,
+    filterByDomain: false,
     parseHTMLComments: false,
     parseScriptTags: false,
-    stripQuerystring: true,
+    respectRobotsTxt: false,
+    stripQuerystring: true
   };
 
   Object.assign( crawler, crawlerDefaults, options );
@@ -137,4 +194,4 @@ function create ( options={} ) {
   return crawler
 };
 
-module.exports = { create: create };
+module.exports = { create };
