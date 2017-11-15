@@ -1,4 +1,4 @@
-'use strit';
+'use strict';
 
 // Description
 //   A Hubot script to index some useful cf.gov things
@@ -12,16 +12,16 @@
 //   HUBOT_CFPB_INDEXER_GITHUB_URL - URL for the GitHub
 //
 // Commands:
-//   hubot start indexing - start indexing consumerfinance.gov
-//   hubot show index - show consumerfinance.gov index
-//   hubot cancel index - cancel the scheduled index
+//   hubot start indexing - start indexing consumerfinance.gov.
+//   hubot show index - show consumerfinance.gov index.
+//   hubot cancel index - cancel the scheduled index.
 //   hubot show pages with (?:the )?(.*) atomic component(s?) -
-//     show pages with certain atomic components.
+//    show pages with certain atomic components.
 //   hubot schedule index - schedule index to begin at a certain time.
 //                          default: 1:00 a.m. est.
-//   load index from url (url) - load index from the url that as passed.
-//   show index - show the github url for the site index.
-//   show index report - show the google sheets report for the site.
+//   hubot load index from url (url) - load index from the url that is passed.
+//   hubot show index - show the github url for the site index.
+//   hubot show index report - show the google sheets report for the site.
 //
 // Author:
 //   CFPB
