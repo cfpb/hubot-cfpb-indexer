@@ -1,17 +1,31 @@
-'use strict';
+'use strit';
 
 // Description
 //   A Hubot script to index some useful cf.gov things
 //
 // Configuration:
 //   HUBOT_CFPB_INDEXER_SECRET_KEY - Secret key that must be provided to start indexing
+//   HUBOT_CFPB_INDEXER_GOOGLE_CLIENT_EMAIL - Google API service account email address.
+//   HUBOT_CFPB_INDEXER_GOOGLE_PRIVATE_KEY - Google API sercice account private key.
+//   HUBOT_CFPB_INDEXER_DEFAULT_SITE - Default site to index.
+//   HUBOT_CFPB_INDEXER_GITHUB_TOKEN - GitHub account token.
+//   HUBOT_CFPB_INDEXER_GITHUB_URL - URL for the GitHub
 //
 // Commands:
 //   hubot start indexing - start indexing consumerfinance.gov
 //   hubot show index - show consumerfinance.gov index
+//   hubot cancel index - cancel the scheduled index
+//   hubot show pages with (?:the )?(.*) atomic component(s?) -
+//     show pages with certain atomic components.
+//   hubot schedule index - schedule index to begin at a certain time.
+//                          default: 1:00 a.m. est.
+//   load index from url (url) - load index from the url that as passed.
+//   show index - show the github url for the site index.
+//   show index report - show the google sheets report for the site.
 //
 // Author:
 //   CFPB
+
 
 const createCrawler = require( './crawler' ).create;
 const { CronJob } = require( 'cron' );
@@ -103,7 +117,7 @@ class CfpbIndexerRobot {
   setBrain( index ) {
     return this.robot.brain.set( CFPB_INDEX, index );
   }
-  scheduleCrawler( time = '00 00 02 * * 0-6' ) {
+  scheduleCrawler( time = '00 00 01 * * 0-6' ) {
     if ( this.cron ) {
       this.cron.stop();
     }
