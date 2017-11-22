@@ -77,6 +77,13 @@ function _addSiteIndexEvents( crawler ) {
     }
 
     console.log( `Fetch complete: ${url}` );
+
+
+    if ( queueItem.id > 0 && queueItem.id % 500 === 0 ) {
+      fs.writeFile( 'site-index_' + new Date() + '.json',
+                    JSON.stringify( crawler.queue ),
+                    function(){} );
+    }
   } );
 
   crawler.addDownloadCondition( ( queueItem, referrerQueueItem, callback ) => {
@@ -178,13 +185,12 @@ function create ( options={} ) {
   const crawler = SimpleCrawler( options.URL );
 
   const crawlerDefaults = {
-    interval: 5000,
+    interval: 3800,
     maxConcurrency: 5,
     filterByDomain: false,
     parseHTMLComments: false,
     parseScriptTags: false,
-    respectRobotsTxt: false,
-    stripQuerystring: true
+    respectRobotsTxt: false
   };
 
   Object.assign( crawler, crawlerDefaults, options );

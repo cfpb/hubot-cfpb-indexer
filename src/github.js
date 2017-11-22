@@ -2,9 +2,9 @@
 
 const GitHubApi = require( 'github' );
 const github = new GitHubApi( {
-  debug: false
+  debug: true
 } );
-const AUTH_TOKEN = process.env.HUBOT_GITHUB_CF_TOKEN;
+const AUTH_TOKEN = process.env.HUBOT_CFPB_INDEXER_GITHUB_TOKEN;
 const OWNER = process.env.HUBOT_GITHUB_ORG_NAME
 const SITE_INDEX_REPO = 'site-index';
 const SITE_INDEX_PATH = 'site-index.json';
@@ -12,13 +12,19 @@ const SITE_INDEX_PATH = 'site-index.json';
 class GitHub {
   static createGist( options ) {
     return github.gists.create( options )
-         .catch( err => console.log( err ) );
+           .catch( err => console.log( err ) );
   }
-  static async getBlobSha( ) {
+/**
+ * Get the blob sha for the site-index.json from Github.
+ * @param {string} url The URL of the page being indexed.
+ * @param {string} responseBuffer The HTML buffer contatining page HTML.
+ */
+  static async getBlobSha( filePath ) {
+
     const commits = await github.repos.getCommits( {
       owner: OWNER,
       repo: SITE_INDEX_REPO,
-      path: SITE_INDEX_PATH
+      path: filePath
     } );
 
     const commitSha = commits.data.shift().sha;
@@ -27,29 +33,30 @@ class GitHub {
       sha: commitSha,
       owner: OWNER,
       repo: SITE_INDEX_REPO,
-      path: SITE_INDEX_PATH,
+      path: filePath,
       recursive: false
     } );
 
     const blobSha = gitTree.data.tree.find( tree =>
-      tree.path === SITE_INDEX_PATH
+      tree.path === filePath
     ).sha;
 
     return blobSha;
   }
-  static async updateFile( data ) {
+  static async updateFile( data, filePath = SITE_INDEX_PATH ) {
     GitHub.authenticate();
-    const sha = await GitHub.getBlobSha();
+    const sha = await GitHub.getBlobSha( filePath );
 
     return github.repos.updateFile( {
       sha,
       owner: OWNER,
       repo: SITE_INDEX_REPO,
-          path: SITE_INDEX_PATH,
-          message: 'Updating Index',
-          content: Buffer.from( data ).toString( 'base64' )
+      path: filePath,
+      message: 'Updating Index',
+      content: Buffer.from( data ).toString( 'base64' )
     } )
-    .catch( err => console.log( err ) );
+    .catch( err => console.log( err ) )
+
   }
   static authenticate( ) {
     github.authenticate( {
@@ -59,6 +66,7 @@ class GitHub {
   }
 }
 
-module.exports = { createGist: GitHub.createGist,
+module.exports = {
+                   createGist: GitHub.createGist,
                    updateFile: GitHub.updateFile
                  };

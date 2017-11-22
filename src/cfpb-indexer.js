@@ -26,7 +26,6 @@
 // Author:
 //   CFPB
 
-
 const createCrawler = require( './crawler' ).create;
 const { CronJob } = require( 'cron' );
 const createGoogleSheets = require( './google-sheets' ).create;
@@ -62,6 +61,7 @@ class CfpbIndexerRobot {
     }
     this.robot.brain.remove( CFPB_INDEX_REPORT_URL );
     this.robot.brain.remove( CFPB_INDEX );
+    this.crawler.stop( true );
     return this.crawler = null;
   }
   async createSpreadSheet( sheetData ) {
@@ -71,12 +71,12 @@ class CfpbIndexerRobot {
       `Index report was created at ${spreadSheetURL}`
     );
   }
-  getBrain( ) {
+  getBrain() {
     return this.robot.brain.get( CFPB_INDEX );
   }
   getCrawlerData( filter ) {
     let data;
-    this.crawler.queue.filterItems( filter, ( error, items ) => {
+    this.crawler.currentQueue.filterItems( filter, ( error, items ) => {
       if ( error ) {
         console.log( error );
       }
@@ -92,8 +92,9 @@ class CfpbIndexerRobot {
     if ( isURL( fileOrURL ) ) {
       this.robot.http( fileOrURL )
       .get()( ( err, response, body ) => {
+        this.crawler.stop( true );
         this.setCrawlerQueue( body );
-        this.robot.messageRoom( null, 'Crawler loaded...' );
+        this.robot.messageRoom( null, 'Index loaded...' );
       } );
     } else {
       this.robot.messageRoom( null, 'Invalid URL' );
@@ -121,15 +122,23 @@ class CfpbIndexerRobot {
     if ( this.cron ) {
       this.cron.stop();
     }
+
+    this.crawler.removeAllListeners( 'complete' );
+
     this.crawler.on( 'complete', () => {
       this.setBrain( this.crawler.queue );
+      this.crawler.queue.freeze( 'site-index.json', ()=>{} );
+      this.crawler.currentQueue = this.crawler.queue;
       this.createSpreadSheet( this.SHEETS );
-      return GitHub.updateFile( beautify( this.crawler.queue, null, 2, 80 ) );
+      return GitHub.updateFile( JSON.stringify( this.crawler.queue ) );
     } );
 
     return this.cron = new CronJob( time, () => {
+      // This is necessary in order to allow users to get data
+      // while the crawler is running;
+      this.crawler.currentQueue = Object.assign( {}, this.crawler.queue );
       this.crawler.resetQueue();
-      return this.crawler.start();
+      this.crawler.start();
     }
     , null, true, 'America/New_York' );
   }
@@ -140,8 +149,20 @@ class CfpbIndexerRobot {
       }
     } );
   }
+  saveCrawlerToGitHub() {
+    return GitHub.updateFile(
+      JSON.stringify( this.crawler.queue ),
+      'site-index-temp.json'
+    );
+  }
+  startCrawler() {
+    this.crawler.start();
+  }
+  stopCrawler() {
+    this.crawler.stop( true );
+  }
   async findAtomicComponents( componentList ) {
-    const results = this.crawler.queue.filter( queueItem => {
+    const results = this.crawler.currentQueue.filter( queueItem => {
       if ( queueItem.components &&  queueItem.components.length ) {
         return componentList.every( component =>
           queueItem.components.includes( component )
@@ -266,5 +287,20 @@ module.exports = function( robot ) {
   robot.respond( /show index report/, function( res ) {
     const spreadSheetURL = cfpbIndexerRobot.getSpreadSheetURL();
     return res.reply( `Here you go: ${spreadSheetURL}` );
+  } );
+
+  robot.respond( /save index/, function( res ) {
+    cfpbIndexerRobot.saveCrawlerToGitHub();
+    return res.reply( `Index saved` );
+  } );
+
+  robot.respond( /stop crawl/, function( res ) {
+    cfpbIndexerRobot.stopCrawler();
+    return res.reply( `stop crawl` );
+  } );
+
+  robot.respond( /start crawl/, function( res ) {
+    cfpbIndexerRobot.startCrawler();
+    return res.reply( `start crawl` );
   } );
 };

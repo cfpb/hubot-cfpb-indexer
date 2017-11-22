@@ -1,9 +1,8 @@
 'use strict';
 
 const google = require( 'googleapis' );
-const googleAuth = require( 'google-auth-library' );;
 const scopes = ['https://www.googleapis.com/auth/spreadsheets',
-              'https://www.googleapis.com/auth/drive'];
+                'https://www.googleapis.com/auth/drive'];
 const sheetsAPI = google.sheets( 'v4' );
 const drive = google.drive( 'v3' );
 
@@ -124,7 +123,7 @@ async function authorizeAPI( authConfig ) {
 
    await jwtClient.authorize( ( err, tokens ) => {
     if ( err ) {
-      console.log( err, 'error');
+      console.log( err );
       return false;
     }
   } );
